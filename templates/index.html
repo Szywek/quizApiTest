@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SzywkiQuiz</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            text-align: center;
+            background-color: #989696;
+        }
+        h1 {
+            color: #333;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 10px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        #song-info {
+            display: none; /* Ukrycie sekcji z informacjami na starcie */
+            margin-top: 20px;
+            border: 1px solid #ddd;
+            padding: 15px;
+            background-color: #f9f9f9;
+            text-align: left;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        #message {
+            margin-top: 20px;
+            color: red; /* Komunikaty o błędach na czerwono */
+            font-weight: bold;
+        }
+        #round-counter {
+            margin-top: 10px;
+            font-size: 18px;
+        }
+        #audio-player {
+        display: none; /* Ukrywa wizualny interfejs kontroli playera */
+    }
+    </style>
+</head>
+<body>
+    <h1>SzywkiQuiz</h1>
+    <p><strong>Smacznej zabawy</strong></p>
+
+    <!-- Odtwarzacz audio -->
+    <audio id="audio-player" controls>
+        <source id="audio-src" src="" type="audio/mpeg">
+        Twoja przeglądarka nie obsługuje odtwarzania audio.
+    </audio>
+
+    <!-- Licznik rund -->
+    <p id="round-counter">
+        Runda: <span id="round-count">0</span> / <span id="total-songs">0</span>
+    </p>
+    <!-- Przyciski -->
+    <button id="play-song">Graj</button>
+    <button id="next-song">Dalej</button>
+    <button id="repeat-song">Powtórz</button>
+    <button id="show-info">Pokaż</button>
+    <div style="margin: 20px;">
+    <p><strong>Głośność:</strong></p>
+    <input
+        id="volume-control"
+        type="range"
+        min="0"
+        max="1"
+        step="0.01"
+        value="1"
+        style="width: 300px;"
+    >
+
+</div>
+    <span id="volume-value">100%</span>
+    <!-- Suwak do ustawiania długości odtwarzania -->
+    <div style="margin: 20px;">
+        <label for="playback-duration">
+            <strong>Długość utworu (1-50 sekund):</strong>
+        </label>
+        <br>
+        <input
+            id="playback-duration"
+            type="range"
+            min="1"
+            max="50"
+            value="10"
+            step="1"
+            style="width: 300px;"
+        >
+        <span id="playback-duration-value">15</span> sekund
+    </div>
+    <!-- Wybór sample'a -->
+    <div style="margin: 20px;">
+        <strong>Sample</strong>
+        <br>
+        <input type="radio" id="start-sample" name="playback-option" value="start" checked>
+        <label for="start-sample">Start (1%)</label>
+        <br>
+        <input type="radio" id="default-sample" name="playback-option" value="default">
+        <label for="default-sample">Middle (50%)</label>
+        <br>
+        <input type="radio" id="random-sample" name="playback-option" value="random">
+        <label for="random-sample">Random (10% - 70%)</label>
+    </div>
+
+    <!-- Wybór typu utworu (Opening/Ending) -->
+    <div style="margin: 20px;">
+        <strong>Co gramy wariacie?:</strong>
+        <br>
+        <input type="checkbox" id="opening-checkbox" name="song-type" value="Opening" checked>
+        <label for="opening-checkbox">Openingi</label>
+        <br>
+        <input type="checkbox" id="ending-checkbox" name="song-type" value="Ending" checked>
+        <label for="ending-checkbox">Endingi</label>
+    </div>
+        <!-- Wybór zakresu vintage -->
+    <div style="margin: 20px;">
+        <strong>Jakie lata kurde ten?</strong>
+        <br>
+        <label for="start-season">Od:</label>
+        <select id="start-season">
+            <option value="Winter">Winter</option>
+            <option value="Spring">Spring</option>
+            <option value="Summer">Summer</option>
+            <option value="Fall">Fall</option>
+        </select>
+        <select id="start-year">
+            <!-- Zakres lat -->
+            {% for year in range(1990, 2031) %}
+            <option value="{{ year }}">{{ year }}</option>
+            {% endfor %}
+        </select>
+        <br>
+        <label for="end-season">Do:</label>
+        <select id="end-season">
+            <option value="Winter">Winter</option>
+            <option value="Spring">Spring</option>
+            <option value="Summer">Summer</option>
+            <option value="Fall">Fall</option>
+        </select>
+        <select id="end-year">
+            <!-- Zakres lat -->
+            {% for year in range(1990, 2031) %}
+            <option value="{{ year }}">{{ year }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <!-- Wiadomości i szczegóły -->
+    <div id="message"></div>
+    <div id="song-info">
+        <p><strong>Anime:</strong> <span id="animeJPName">---</span></p>
+        <p><strong>Tytuł utworu:</strong> <span id="songName">---</span></p>
+        <p><strong>Artysta:</strong> <span id="songArtist">---</span></p>
+        <p><strong>Typ utworu:</strong> <span id="songType">---</span></p>
+        <p><strong>Sezon i rok:</strong> <span id="animeVintage">---</span></p> <!-- Dodano -->
+    </div>
+
+ <script>
+      $(document).ready(function () {
+    let initialTotalSongs = 0; // Przechowywanie liczby wszystkich utworów (ustawiana tylko raz)
+    let isLoading = false; // Flaga do kontroli bieżącego stanu ładowania piosenki
+    let currentSongUrl = ""; // URL obecnie odtwarzanego utworu
+    let roundCount = 1; // Licznik rund
+    let startTime = 0; // Czas startowy w sekundach
+    let playbackTimeout = null; // Referencja do timera odtwarzania
+    let playbackDuration = 15; // Domyślna długość odtwarzania w sekundach (może być edytowana suwakiem)
+    let songDetailsVisible = false; // Flaga widoczności szczegółów utworu
+    const audioPlayer = document.createElement("audio"); // Tworzymy <audio> dynamicznie
+    let playback_start_percentage = 50; // Domyślnie 50%
+    const MIN_RANDOM_PERCENTAGE = 10; // Minimalny próg losowania
+    const MAX_RANDOM_PERCENTAGE = 70; // Maksymalny próg losowania
+    let currentRoundCount = 0; // Przechowuj bieżący numer rundy
+
+    // Funkcja generowania losowych wartości procentowych w danym zakresie
+    function getRandomPercentage(min, max) {
+        return Math.floor(Math.random() * (max - min + 1)) + min;
+    }
+
+    // Funkcja ustawienia playback_start_percentage na podstawie wybranej opcji
+    function setPlaybackStartPercentage() {
+        const selectedOption = $("input[name='playback-option']:checked").val(); // Pobierz wartość zaznaczonego radio buttona
+        if (selectedOption === "start") {
+            playback_start_percentage = 1; // Ustaw na 1%
+        } else if (selectedOption === "default") {
+            playback_start_percentage = 50; // Ustaw na domyślne 50%
+        } else if (selectedOption === "random") {
+            playback_start_percentage = getRandomPercentage(MIN_RANDOM_PERCENTAGE, MAX_RANDOM_PERCENTAGE); // Losuj w zakresie 10%-70%
+        }
+        console.log(`DEBUG: playback_start_percentage ustawione na ${playback_start_percentage}% (${selectedOption})`);
+    }
+
+    // Zarejestruj nasłuchiwanie zdarzenia dla opcji radio
+    $("input[name='playback-option']").change(function () {
+        setPlaybackStartPercentage();
+    });
+
+    // Ustaw suwak głośności
+    $("#volume-control").on("input", function () {
+        const volume = $(this).val(); // Odczytaj wartość z suwaka
+        audioPlayer.volume = volume; // Ustaw głośność audio playera
+        $("#volume-value").text(Math.round(volume * 100) + "%"); // Wyświetl aktualną głośność
+        console.log("DEBUG: Głośność ustawiona na " + volume * 100 + "%");
+    });
+
+    // Funkcja zatrzymania odtwarzania po playbackDuration sekundach
+    function stopPlaybackAfterDuration() {
+        if (playbackTimeout) {
+            clearTimeout(playbackTimeout);
+        }
+        playbackTimeout = setTimeout(() => {
+            audioPlayer.pause();
+            console.log("DEBUG: Odtwarzanie automatycznie zatrzymane po " + playbackDuration + " sekundach.");
+        }, playbackDuration * 1000);
+    }
+function updateRoundCounter() {
+    $("#round-count").text(roundCount); // Ustaw wartość liczbę rund w elemencie
+    console.log("DEBUG: Licznik rundy zaktualizowany. Aktualna runda:", roundCount);
+}
+
+// Przycisk "Graj" z walidacją
+$("#play-song").click(function () {
+    console.log("DEBUG: Przycisnąłeś Graj!");
+    initialTotalSongs = 0; // Reset liczby wszystkich utworów
+    currentRoundCount = 1; // Reset liczby bieżących rund
+    roundCount = 0; // Reset liczby rund (dodatkowy fallback)
+
+    $("#round-count").text(currentRoundCount); // Reset wyświetlanej liczby rund
+    $("#total-songs").text("0"); // Pokazuje 0 na początku gry
+    console.log("DEBUG: Rozpoczęcie nowej gry. Liczniki zresetowane.");
+
+    // Ładowanie pierwszego utworu
+    loadSong();
+});
+
+function loadSong() {
+    if (isLoading) {
+        return; // Zapobiega wielokrotnemu ładowaniu
+    }
+
+    isLoading = true;
+
+    if (audioPlayer) {
+        audioPlayer.pause();
+        audioPlayer.src = "";
+        audioPlayer.load();
+    }
+
+    setPlaybackStartPercentage();
+
+    const startSeason = $("#start-season").val();
+    const startYear = parseInt($("#start-year").val());
+    const endSeason = $("#end-season").val();
+    const endYear = parseInt($("#end-year").val());
+
+    let selectedTypes = [];
+    $("input[name='song-type']:checked").each(function () {
+        selectedTypes.push($(this).val());
+    });
+
+    $.get("/play", {
+        playback_start_percentage: playback_start_percentage,
+        song_types: selectedTypes.join(","),
+        start_season: startSeason,
+        start_year: startYear,
+        end_season: endSeason,
+        end_year: endYear
+    }, function (data) {
+        console.log("DEBUG: Odpowiedź z serwera:", data);
+
+        if (data.error) {
+            $("#message").text(data.error).show();
+        } else {
+            $("#message").hide();
+
+            // Przypisz `initialTotalSongs` tylko raz na początku gry
+            if (initialTotalSongs === 0) {
+                initialTotalSongs = parseInt(data.roundCount) + 1 || 0; // Liczba wszystkich utworów
+                console.log("DEBUG: initialTotalSongs ustawione na:", initialTotalSongs);
+                $("#total-songs").text(initialTotalSongs); // Uaktualnij UI
+            }
+
+            // Szczegóły obecnej piosenki
+            $("#songName").text(data.songName);
+            $("#songArtist").text(data.songArtist);
+            $("#songType").text(data.songType);
+            $("#animeJPName").text(data.animeJPName);
+            $("#animeVintage").text(data.animeVintage || "---");
+
+            currentSongUrl = data.audioUrl;
+            startTime = data.startTime || 0;
+
+            audioPlayer.src = currentSongUrl;
+            audioPlayer.currentTime = startTime;
+            audioPlayer.load();
+            audioPlayer.play();
+
+            stopPlaybackAfterDuration(); // Automatyczne zatrzymanie odtwarzania
+        }
+
+        isLoading = false; // Odblokowanie żądań
+    }).fail(function () {
+        isLoading = false;
+        console.error("Nie udało się załadować nowego utworu.");
+    });
+}
+
+    // Obsługa zmiany długości odtwarzania przez suwakiem
+    $("#playback-duration").on("input", function () {
+        playbackDuration = parseInt($(this).val()); // Aktualizuj zmienną playbackDuration
+        $("#playback-duration-value").text(playbackDuration); // Wyświetl nową wartość
+        console.log("DEBUG: playbackDuration ustawione na:", playbackDuration);
+    });
+
+    // Przycisk "Dalej"
+$("#next-song").click(function () {
+    if (audioPlayer) {
+        audioPlayer.pause(); // Zatrzymanie obecnego odtwarzania
+        audioPlayer.currentTime = 0; // Resetowanie czasu
+    }
+
+    // Ukrywanie szczegółów utworu
+    if (songDetailsVisible) {
+        $("#song-info").hide();
+        songDetailsVisible = false; // Reset widoczności
+    }
+
+    console.log("DEBUG: Przycisk Dalej kliknięty.");
+
+    currentRoundCount++; // Zwiększenie wartości licznika rund
+    console.log("DEBUG: currentRoundCount zwiększone:", currentRoundCount); // Wyświetlanie aktualnej wartości
+
+    $("#round-count").text(currentRoundCount); // Aktualizacja licznika w UI
+    console.log("DEBUG: UI zaktualizowane do wartości:", $("#round-count").text());
+
+    loadSong(); // Załaduj kolejny utwór
+});
+
+    // Przycisk "Powtórz"
+    $("#repeat-song").click(function () {
+        if (currentSongUrl) {
+            audioPlayer.currentTime = startTime || 0; // Cofnij do startTime
+            audioPlayer.play();
+            stopPlaybackAfterDuration();
+        } else {
+            $("#message").text("Brak załadowanego utworu!").show();
+        }
+    });
+
+    // Przycisk "Pokaż"
+    $("#show-info").click(function () {
+        if (!songDetailsVisible) {
+            $("#song-info").show(); // Pokaż szczegóły utworu
+            songDetailsVisible = true;
+        } else {
+            $("#song-info").hide(); // Ukryj szczegóły, jeśli są już widoczne
+            songDetailsVisible = false;
+        }
+    });
+    });
+</script>
+</body>
+</html>
